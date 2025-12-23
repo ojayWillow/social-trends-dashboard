@@ -22,10 +22,8 @@ apscheduler==3.10.4
 # Logging
 colorlog==6.8.0
 
-# Dashboard (choose one)
-flask==3.0.0  # OR
-# fastapi==0.104.1
-# uvicorn==0.24.0
+# Dashboard
+streamlit==1.29.0
 
 # Data Visualization
 plotly==5.18.0
