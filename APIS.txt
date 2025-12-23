@@ -1,0 +1,162 @@
+📊 ALL APIs & CREDENTIALS
+1. YouTube Data API v3 ✅
+Service: Google Cloud
+
+API Key: AIzaSyCZAutPEFXYRtE4qGc7crfE9GfeLNweXL0
+
+Free Tier: 10,000 quota units/day
+
+Base URL: https://www.googleapis.com/youtube/v3/
+
+What you get: Trending videos, niche videos by keyword, views, likes, comments, hashtags
+
+2. Reddit JSON API ✅
+Service: Reddit Public API
+
+Authentication: NONE REQUIRED
+
+Cost: 100% FREE
+
+Base URL: https://www.reddit.com/
+
+Endpoints: /r/{subreddit}/hot.json, /r/{subreddit}/top.json?t=day
+
+What you get: Trending posts, upvotes, comments, subreddit discussions
+
+3. Hacker News API ✅
+Service: Firebase API
+
+Authentication: NONE REQUIRED
+
+Cost: 100% FREE
+
+Base URL: https://hacker-news.firebaseio.com/v0/
+
+Endpoints: /topstories.json, /newstories.json, /item/{id}.json
+
+What you get: Tech trends, top stories, vote counts, discussion activity
+
+4. Google Trends (via SerpApi) ✅
+Service: SerpApi
+
+Account: oskars vitols (og.vitols@gmail.com)
+
+API Key: cb33891c26cd6b47586909e820e66970a1257e959e3b54303a50d9e112659f37
+
+Free Tier: 250 searches/month
+
+API Endpoint: https://serpapi.com/search.json?engine=google_trends&q={KEYWORD}&api_key={KEY}
+
+What you get: Search interest over time, regional trends, related queries, rising searches
+
+5. Instagram Data (via Apify) ✅
+Service: Apify Scrapers
+
+Account: oscar willow (win10keypro@gmail.com)
+
+API Token: apify_api_vdkXcgvndeWFrTtBlcxxoNsQm5uQx80VRHOu
+
+Free Credits: $5.00/month
+
+Actor ID: apify/instagram-scraper
+
+API: https://api.apify.com/v2/acts/apify~instagram-scraper/runs
+
+What you get: Posts by hashtag, likes, comments, captions, engagement metrics
+
+Cost: ~$0.10-0.20 per 50 posts
+
+6. TikTok Data (via Apify) ✅
+Service: Same Apify account
+
+Actor ID: clockworks/tiktok-scraper
+
+API: https://api.apify.com/v2/acts/clockworks~tiktok-scraper/runs
+
+What you get: Videos by hashtag, views, likes, shares, comments, trending sounds
+
+Cost: ~$0.10-0.20 per 50 videos
+
+7. Twitter/X Data (via Apify) ✅
+Service: Same Apify account
+
+Actor ID: apidojo/tweet-scraper
+
+API: https://api.apify.com/v2/acts/apidojo~tweet-scraper/runs
+
+What you get: Tweets by keyword/hashtag, likes, retweets, replies, trending topics
+
+Cost: $0.40 per 1,000 tweets (very affordable!)
+
+💰 Total Monthly Cost: $0
+All platforms stay within free tiers:
+
+YouTube: Free (10K quota/day)
+
+Reddit: Free (unlimited)
+
+Hacker News: Free (unlimited)
+
+Google Trends: Free (250 searches/month)
+
+Instagram + TikTok + Twitter: Free (within Apify's $5 monthly credits)
+
+Budget breakdown:
+
+Instagram: ~$1-2/month
+
+TikTok: ~$1-2/month
+
+Twitter: ~$1-2/month
+
+Total: ~$3-5/month = Still FREE with Apify credits!
+
+🎯 What Your Dashboard Can Show
+With these 7 data sources, you can track:
+
+Trending Hashtags across all platforms
+
+Viral Videos (YouTube, TikTok)
+
+Popular Posts (Instagram, Reddit, Twitter)
+
+Search Trends (Google Trends) - predict what will trend next
+
+Tech Discussions (Hacker News, Reddit)
+
+Engagement Metrics (likes, views, comments, shares)
+
+Best Posting Times (when content gets most engagement)
+
+Content Ideas (what's working in your niche)
+
+Rising Topics (spot trends before they explode)
+
+📝 Add to Your API File
+Save all credentials in a secure .env file:
+
+text
+# YouTube
+YOUTUBE_API_KEY=AIzaSyCZAutPEFXYRtE4qGc7crfE9GfeLNweXL0
+
+# SerpApi (Google Trends)
+SERPAPI_KEY=cb33891c26cd6b47586909e820e66970a1257e959e3b54303a50d9e112659f37
+
+# Apify (Instagram, TikTok, Twitter)
+APIFY_TOKEN=apify_api_vdkXcgvndeWFrTtBlcxxoNsQm5uQx80VRHOu
+
+# Reddit & Hacker News = No authentication needed!
+🚀 Next Steps
+You're ready to start building! You now have:
+✅ 7 data sources
+✅ All API keys
+✅ Tested and working endpoints
+✅ 100% free tier access
+
+Would you like help with:
+
+Writing example code to fetch data from these APIs?
+
+Designing your database schema?
+
+Planning your dashboard layout?
