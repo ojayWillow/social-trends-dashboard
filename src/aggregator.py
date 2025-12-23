@@ -1,285 +1,324 @@
-"""
-Aggregator module to collect and analyze trending content from all platforms
-"""
+import json
+import os
+from datetime import datetime
 from collections import Counter
 import re
-from datetime import datetime
+from typing import Dict, List, Any
 
-class TrendingAggregator:
-    """Aggregate and analyze trending content from multiple platforms"""
+from src.collectors.google_trends_collector import GoogleTrendsCollector
+from src.collectors.reddit_collector import RedditCollector
+from src.collectors.hackernews_collector import HackerNewsCollector
+from src.collectors.youtube_collector import YouTubeCollector
+from config import Config
+
+
+class TrendAggregator:
+    """Aggregate and analyze trending content from all platforms"""
     
-    def __init__(self, collectors):
-        """
-        Initialize with collector instances
-        collectors: dict with keys 'google', 'reddit', 'hackernews', 'youtube'
-        """
-        self.collectors = collectors
-        self.trends_data = {}
+    def __init__(self):
+        self.google_collector = GoogleTrendsCollector()
+        self.reddit_collector = RedditCollector()
+        self.hn_collector = HackerNewsCollector()
+        self.youtube_collector = YouTubeCollector()
+        
+        # Create data directories
+        os.makedirs(Config.PROCESSED_DATA_DIR, exist_ok=True)
     
-    def extract_hashtags(self, text):
+    def extract_hashtags(self, text: str) -> List[str]:
         """Extract hashtags from text"""
         if not text:
             return []
-        hashtag_pattern = r'#\w+'
-        return re.findall(hashtag_pattern, text.lower())
+        return re.findall(r'#\w+', text.lower())
     
-    def extract_keywords(self, text, min_length=4):
-        """Extract potential keywords from text"""
+    def extract_keywords(self, text: str, min_length: int = 4) -> List[str]:
+        """Extract keywords from text (simple word extraction)"""
         if not text:
             return []
-        # Remove common words and extract meaningful keywords
-        common_words = {'the', 'and', 'for', 'with', 'this', 'that', 'from', 'have', 'will', 'your', 'what', 'when', 'where', 'about'}
-        words = re.findall(r'\b[a-z]{' + str(min_length) + r',}\b', text.lower())
-        return [w for w in words if w not in common_words]
+        # Remove special characters and split
+        words = re.findall(r'\b[a-zA-Z]{' + str(min_length) + r',}\b', text.lower())
+        # Filter out common stop words
+        stop_words = {'this', 'that', 'with', 'from', 'have', 'been', 'will', 'your', 'their', 'what', 'when', 'where', 'which', 'about', 'there', 'these', 'those'}
+        return [w for w in words if w not in stop_words]
     
-    def collect_google_trends(self, queries=['technology', 'artificial intelligence', 'crypto']):
-        """Collect trending topics from Google Trends"""
-        collector = self.collectors.get('google')
-        if not collector:
-            return None
+    def get_youtube_trends(self, max_results: int = 25) -> Dict[str, Any]:
+        """Get trending content from YouTube"""
+        print("\n📺 Fetching YouTube trends...")
         
-        trends = []
-        for query in queries:
-            data = collector.get_interest_over_time(query)
-            if data and 'interest_over_time' in data:
-                timeline = data.get('interest_over_time', {}).get('timeline_data', [])
-                if timeline:
-                    latest = timeline[-1]
-                    trends.append({
-                        'query': query,
-                        'interest': latest.get('values', [{}])[0].get('extracted_value', 0),
-                        'date': latest.get('date', 'Unknown')
-                    })
+        data = self.youtube_collector.get_trending_videos(max_results=max_results)
         
-        # Sort by interest
-        trends.sort(key=lambda x: x['interest'], reverse=True)
-        return trends
+        if not data or 'items' not in data:
+            return {'videos': [], 'top_titles': [], 'total_views': 0}
+        
+        videos = []
+        all_keywords = []
+        total_views = 0
+        
+        for item in data['items']:
+            snippet = item.get('snippet', {})
+            stats = item.get('statistics', {})
+            
+            title = snippet.get('title', '')
+            views = int(stats.get('viewCount', 0))
+            likes = int(stats.get('likeCount', 0))
+            comments = int(stats.get('commentCount', 0))
+            
+            videos.append({
+                'title': title,
+                'channel': snippet.get('channelTitle', ''),
+                'views': views,
+                'likes': likes,
+                'comments': comments,
+                'published': snippet.get('publishedAt', ''),
+                'tags': snippet.get('tags', [])[:5]  # Top 5 tags
+            })
+            
+            # Extract keywords from title
+            all_keywords.extend(self.extract_keywords(title))
+            total_views += views
+        
+        # Get most common keywords
+        keyword_counts = Counter(all_keywords)
+        top_keywords = [{'keyword': k, 'count': v} for k, v in keyword_counts.most_common(10)]
+        
+        return {
+            'videos': sorted(videos, key=lambda x: x['views'], reverse=True)[:10],
+            'top_keywords': top_keywords,
+            'total_views': total_views,
+            'total_videos': len(videos)
+        }
     
-    def collect_reddit_trends(self, subreddits=['technology', 'programming', 'startups'], limit=25):
-        """Collect trending posts from Reddit"""
-        collector = self.collectors.get('reddit')
-        if not collector:
-            return None
+    def get_reddit_trends(self, subreddits: List[str] = None, limit: int = 25) -> Dict[str, Any]:
+        """Get trending content from Reddit"""
+        print("\n👽 Fetching Reddit trends...")
+        
+        if subreddits is None:
+            subreddits = ['all', 'popular', 'technology', 'programming', 'startups']
         
         all_posts = []
+        all_keywords = []
         hashtags = []
-        keywords = []
         
         for subreddit in subreddits:
-            posts = collector.get_hot_posts(subreddit, limit=limit)
+            posts = self.reddit_collector.get_hot_posts(subreddit, limit=limit)
             
             for post in posts:
                 data = post.get('data', {})
                 title = data.get('title', '')
                 score = data.get('score', 0)
-                comments = data.get('num_comments', 0)
-                url = data.get('url', '')
-                
-                # Extract hashtags and keywords
-                hashtags.extend(self.extract_hashtags(title))
-                keywords.extend(self.extract_keywords(title))
                 
                 all_posts.append({
-                    'platform': 'Reddit',
-                    'subreddit': subreddit,
                     'title': title,
+                    'subreddit': data.get('subreddit', ''),
                     'score': score,
-                    'comments': comments,
-                    'engagement': score + comments,
-                    'url': url
+                    'comments': data.get('num_comments', 0),
+                    'url': data.get('url', ''),
+                    'author': data.get('author', ''),
+                    'created': data.get('created_utc', 0)
                 })
+                
+                # Extract keywords and hashtags
+                all_keywords.extend(self.extract_keywords(title))
+                hashtags.extend(self.extract_hashtags(title))
         
-        # Sort by engagement
-        all_posts.sort(key=lambda x: x['engagement'], reverse=True)
+        # Get most common items
+        keyword_counts = Counter(all_keywords)
+        hashtag_counts = Counter(hashtags)
         
         return {
-            'posts': all_posts[:50],  # Top 50
-            'trending_hashtags': Counter(hashtags).most_common(10),
-            'trending_keywords': Counter(keywords).most_common(20)
+            'posts': sorted(all_posts, key=lambda x: x['score'], reverse=True)[:10],
+            'top_keywords': [{'keyword': k, 'count': v} for k, v in keyword_counts.most_common(10)],
+            'top_hashtags': [{'hashtag': k, 'count': v} for k, v in hashtag_counts.most_common(10)],
+            'total_posts': len(all_posts),
+            'subreddits_analyzed': subreddits
         }
     
-    def collect_hackernews_trends(self, limit=30):
-        """Collect trending stories from Hacker News"""
-        collector = self.collectors.get('hackernews')
-        if not collector:
-            return None
+    def get_hackernews_trends(self, limit: int = 30) -> Dict[str, Any]:
+        """Get trending content from Hacker News"""
+        print("\n🔶 Fetching Hacker News trends...")
         
-        stories = collector.get_top_stories_with_details(limit=limit)
-        keywords = []
+        stories = self.hn_collector.get_top_stories_with_details(limit=limit)
         
-        processed_stories = []
+        all_keywords = []
+        
         for story in stories:
             title = story.get('title', '')
-            score = story.get('score', 0)
-            comments = story.get('descendants', 0)
-            url = story.get('url', '')
-            
-            # Extract keywords
-            keywords.extend(self.extract_keywords(title))
-            
-            processed_stories.append({
-                'platform': 'Hacker News',
-                'title': title,
-                'score': score,
-                'comments': comments,
-                'engagement': score + (comments * 2),  # Weight comments more
-                'url': url
-            })
+            all_keywords.extend(self.extract_keywords(title))
         
-        # Sort by engagement
-        processed_stories.sort(key=lambda x: x['engagement'], reverse=True)
+        keyword_counts = Counter(all_keywords)
         
         return {
-            'stories': processed_stories[:30],
-            'trending_keywords': Counter(keywords).most_common(20)
+            'stories': [
+                {
+                    'title': s.get('title', ''),
+                    'score': s.get('score', 0),
+                    'comments': s.get('descendants', 0),
+                    'url': s.get('url', ''),
+                    'author': s.get('by', ''),
+                    'time': s.get('time', 0)
+                }
+                for s in stories[:10]
+            ],
+            'top_keywords': [{'keyword': k, 'count': v} for k, v in keyword_counts.most_common(10)],
+            'total_stories': len(stories)
         }
     
-    def collect_youtube_trends(self, region='US', max_results=25):
-        """Collect trending videos from YouTube"""
-        collector = self.collectors.get('youtube')
-        if not collector:
-            return None
+    def get_google_trends(self, queries: List[str] = None) -> Dict[str, Any]:
+        """Get trending searches from Google Trends"""
+        print("\n📊 Fetching Google Trends...")
         
-        data = collector.get_trending_videos(region_code=region, max_results=max_results)
-        if not data or 'items' not in data:
-            return None
+        if queries is None:
+            # Use some default trending topics
+            queries = ['ai', 'cryptocurrency', 'climate change', 'technology', 'startup']
         
-        videos = []
-        hashtags = []
-        keywords = []
+        trends_data = []
         
-        for video in data.get('items', []):
-            snippet = video.get('snippet', {})
-            stats = video.get('statistics', {})
+        for query in queries:
+            data = self.google_collector.get_interest_over_time(query)
             
-            title = snippet.get('title', '')
-            channel = snippet.get('channelTitle', '')
-            views = int(stats.get('viewCount', 0))
-            likes = int(stats.get('likeCount', 0))
-            comments = int(stats.get('commentCount', 0))
-            video_id = video.get('id', '')
-            
-            # Extract hashtags and keywords
-            description = snippet.get('description', '')
-            hashtags.extend(self.extract_hashtags(title + ' ' + description))
-            keywords.extend(self.extract_keywords(title))
-            
-            videos.append({
-                'platform': 'YouTube',
-                'title': title,
-                'channel': channel,
-                'views': views,
-                'likes': likes,
-                'comments': comments,
-                'engagement': views + (likes * 10) + (comments * 5),
-                'url': f'https://www.youtube.com/watch?v={video_id}'
-            })
-        
-        # Sort by engagement
-        videos.sort(key=lambda x: x['engagement'], reverse=True)
+            if data and 'interest_over_time' in data:
+                timeline = data.get('interest_over_time', {}).get('timeline_data', [])
+                
+                if timeline:
+                    # Get latest interest value
+                    latest = timeline[-1]
+                    values = latest.get('values', [])
+                    
+                    if values:
+                        trends_data.append({
+                            'query': query,
+                            'interest': values[0].get('extracted_value', 0),
+                            'date': latest.get('date', ''),
+                            'trend_direction': self._calculate_trend_direction(timeline)
+                        })
         
         return {
-            'videos': videos[:25],
-            'trending_hashtags': Counter(hashtags).most_common(10),
-            'trending_keywords': Counter(keywords).most_common(20)
+            'trends': sorted(trends_data, key=lambda x: x['interest'], reverse=True),
+            'queries_analyzed': queries
         }
     
-    def aggregate_all_trends(self, **kwargs):
-        """
-        Collect trends from all platforms
+    def _calculate_trend_direction(self, timeline: List[Dict]) -> str:
+        """Calculate if trend is rising, falling, or stable"""
+        if len(timeline) < 2:
+            return 'stable'
         
-        Returns a comprehensive dictionary with all trending data
-        """
-        print("🔄 Collecting trends from all platforms...")
+        recent_values = []
+        for point in timeline[-5:]:
+            values = point.get('values', [])
+            if values:
+                recent_values.append(values[0].get('extracted_value', 0))
+        
+        if len(recent_values) < 2:
+            return 'stable'
+        
+        avg_first_half = sum(recent_values[:len(recent_values)//2]) / (len(recent_values)//2)
+        avg_second_half = sum(recent_values[len(recent_values)//2:]) / (len(recent_values) - len(recent_values)//2)
+        
+        diff_percent = ((avg_second_half - avg_first_half) / avg_first_half * 100) if avg_first_half > 0 else 0
+        
+        if diff_percent > 10:
+            return 'rising'
+        elif diff_percent < -10:
+            return 'falling'
+        else:
+            return 'stable'
+    
+    def aggregate_all_trends(self) -> Dict[str, Any]:
+        """Aggregate trends from all platforms"""
+        print("\n" + "="*60)
+        print("🚀 AGGREGATING TRENDS FROM ALL PLATFORMS")
+        print("="*60)
         
         results = {
             'timestamp': datetime.now().isoformat(),
-            'google_trends': None,
-            'reddit': None,
-            'hackernews': None,
-            'youtube': None,
-            'overall_keywords': [],
-            'overall_hashtags': []
+            'youtube': {},
+            'reddit': {},
+            'hackernews': {},
+            'google_trends': {},
+            'global_keywords': []
         }
         
-        # Google Trends
-        if 'google' in self.collectors:
-            print("📊 Fetching Google Trends...")
-            results['google_trends'] = self.collect_google_trends(
-                queries=kwargs.get('google_queries', ['technology', 'AI', 'crypto'])
-            )
+        # Collect from each platform
+        try:
+            results['youtube'] = self.get_youtube_trends()
+        except Exception as e:
+            print(f"❌ YouTube error: {e}")
+            results['youtube'] = {'error': str(e)}
         
-        # Reddit
-        if 'reddit' in self.collectors:
-            print("👽 Fetching Reddit trends...")
-            results['reddit'] = self.collect_reddit_trends(
-                subreddits=kwargs.get('reddit_subs', ['technology', 'programming', 'startups']),
-                limit=kwargs.get('reddit_limit', 25)
-            )
+        try:
+            results['reddit'] = self.get_reddit_trends()
+        except Exception as e:
+            print(f"❌ Reddit error: {e}")
+            results['reddit'] = {'error': str(e)}
         
-        # Hacker News
-        if 'hackernews' in self.collectors:
-            print("🔶 Fetching Hacker News trends...")
-            results['hackernews'] = self.collect_hackernews_trends(
-                limit=kwargs.get('hn_limit', 30)
-            )
+        try:
+            results['hackernews'] = self.get_hackernews_trends()
+        except Exception as e:
+            print(f"❌ Hacker News error: {e}")
+            results['hackernews'] = {'error': str(e)}
         
-        # YouTube
-        if 'youtube' in self.collectors:
-            print("🎥 Fetching YouTube trends...")
-            results['youtube'] = self.collect_youtube_trends(
-                region=kwargs.get('youtube_region', 'US'),
-                max_results=kwargs.get('youtube_limit', 25)
-            )
+        try:
+            results['google_trends'] = self.get_google_trends()
+        except Exception as e:
+            print(f"❌ Google Trends error: {e}")
+            results['google_trends'] = {'error': str(e)}
         
-        # Aggregate overall keywords and hashtags
+        # Aggregate global keywords across all platforms
         all_keywords = []
-        all_hashtags = []
         
-        if results['reddit']:
-            all_keywords.extend([kw for kw, _ in results['reddit'].get('trending_keywords', [])])
-            all_hashtags.extend([ht for ht, _ in results['reddit'].get('trending_hashtags', [])])
+        for platform in ['youtube', 'reddit', 'hackernews']:
+            if 'top_keywords' in results[platform]:
+                for kw in results[platform]['top_keywords']:
+                    all_keywords.extend([kw['keyword']] * kw['count'])
         
-        if results['hackernews']:
-            all_keywords.extend([kw for kw, _ in results['hackernews'].get('trending_keywords', [])])
+        if all_keywords:
+            global_keyword_counts = Counter(all_keywords)
+            results['global_keywords'] = [
+                {'keyword': k, 'count': v} 
+                for k, v in global_keyword_counts.most_common(20)
+            ]
         
-        if results['youtube']:
-            all_keywords.extend([kw for kw, _ in results['youtube'].get('trending_keywords', [])])
-            all_hashtags.extend([ht for ht, _ in results['youtube'].get('trending_hashtags', [])])
+        # Save to file
+        self._save_results(results)
         
-        results['overall_keywords'] = Counter(all_keywords).most_common(30)
-        results['overall_hashtags'] = Counter(all_hashtags).most_common(15)
-        
-        print("✅ All trends collected!")
-        
+        print("\n✅ Trend aggregation complete!")
         return results
     
-    def get_top_items_summary(self, aggregated_data, top_n=10):
-        """
-        Generate a summary of top items across all platforms
-        """
-        summary = {
-            'top_reddit_posts': [],
-            'top_hackernews_stories': [],
-            'top_youtube_videos': [],
-            'top_keywords': [],
-            'top_hashtags': []
-        }
+    def _save_results(self, results: Dict[str, Any]):
+        """Save results to JSON file"""
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f"trends_{timestamp}.json"
+        filepath = os.path.join(Config.PROCESSED_DATA_DIR, filename)
         
-        # Top Reddit posts
-        if aggregated_data['reddit']:
-            summary['top_reddit_posts'] = aggregated_data['reddit']['posts'][:top_n]
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
         
-        # Top HN stories
-        if aggregated_data['hackernews']:
-            summary['top_hackernews_stories'] = aggregated_data['hackernews']['stories'][:top_n]
+        # Also save as latest.json for easy access
+        latest_path = os.path.join(Config.PROCESSED_DATA_DIR, 'latest.json')
+        with open(latest_path, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
         
-        # Top YouTube videos
-        if aggregated_data['youtube']:
-            summary['top_youtube_videos'] = aggregated_data['youtube']['videos'][:top_n]
-        
-        # Overall top keywords and hashtags
-        summary['top_keywords'] = aggregated_data['overall_keywords'][:top_n]
-        summary['top_hashtags'] = aggregated_data['overall_hashtags'][:top_n]
-        
-        return summary
+        print(f"\n💾 Results saved to: {filepath}")
+
+
+if __name__ == '__main__':
+    aggregator = TrendAggregator()
+    results = aggregator.aggregate_all_trends()
+    
+    # Print summary
+    print("\n" + "="*60)
+    print("📊 TRENDS SUMMARY")
+    print("="*60)
+    
+    if 'youtube' in results and 'videos' in results['youtube']:
+        print(f"\n📺 YouTube: {len(results['youtube']['videos'])} trending videos")
+    
+    if 'reddit' in results and 'posts' in results['reddit']:
+        print(f"👽 Reddit: {len(results['reddit']['posts'])} top posts")
+    
+    if 'hackernews' in results and 'stories' in results['hackernews']:
+        print(f"🔶 Hacker News: {len(results['hackernews']['stories'])} top stories")
+    
+    if 'global_keywords' in results and results['global_keywords']:
+        print("\n🔥 Top 5 Global Keywords:")
+        for kw in results['global_keywords'][:5]:
+            print(f"   • {kw['keyword']}: {kw['count']} mentions")
